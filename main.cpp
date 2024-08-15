@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 
 DECLARE_COMPONENT_VERSION(
-    "LDDCDesktopLyrics",
+    "LDDC Desktop Lyrics",
     "0.0.1",
     "Foobar2000 plugin for displaying lyrics on the desktop."
 );
@@ -79,13 +79,13 @@ public:
     }
 
     void on_quit() override {
-        play_callback_manager::get()->unregister_callback(play_callback_impl);
         if (lddc) {
             lddc->shutdown();
             delete lddc;
             lddc = nullptr;
         }
         if (play_callback_impl) {
+            play_callback_manager::get()->unregister_callback(play_callback_impl);
             delete play_callback_impl;
             play_callback_impl = nullptr;
         }
@@ -162,7 +162,7 @@ public:
             siStartInfo.dwFlags |= STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
             siStartInfo.wShowWindow = SW_HIDE;
 
-            std::string cmdline = "cmd /c " + cmd;
+            std::string cmdline = "cmd /c \"" + cmd + "\"";
             std::wstring cmdline_w = string_to_wstring(cmdline);
 
             if (!CreateProcess(NULL, const_cast<LPWSTR>(cmdline_w.c_str()), NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo)) {
