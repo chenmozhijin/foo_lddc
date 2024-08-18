@@ -12,7 +12,7 @@ using json = nlohmann::json;
 
 DECLARE_COMPONENT_VERSION(
     "LDDC Desktop Lyrics",
-    "0.0.1",
+    "0.0.2",
     "Foobar2000 plugin for displaying lyrics on the desktop."
 );
 
@@ -73,9 +73,9 @@ public:
 
     void on_init() override {
         lddc = new LDDCDesktopLyrics();
-        lddc->initialize();
         play_callback_impl = new play_callback_impl_class(lddc);
         play_callback_manager::get()->register_callback(play_callback_impl, play_callback::flag_on_playback_all, true);
+        lddc->initialize();
     }
 
     void on_quit() override {
@@ -93,14 +93,14 @@ public:
 
     class LDDCDesktopLyrics {
     public:
-        LDDCDesktopLyrics() : sock(INVALID_SOCKET), id(0), version(0), command_thread(nullptr) {}
+        LDDCDesktopLyrics() : sock(INVALID_SOCKET), id(0), version(0), command_thread(nullptr), start_thread(nullptr) {}
 
         void initialize() {
             if (!load_command_line()) {
                 MessageBox(NULL, L"Failed to load command line from info.json,Please run the LDDC main program at least once", L"Error", MB_OK | MB_ICONERROR);
                 return;
             }
-            start_service();
+            start_thread = new std::thread(&LDDCDesktopLyrics::start_service, this);
         }
 
         void shutdown() {
@@ -241,7 +241,7 @@ public:
                 {"info", {
                     {"name", "foo_lddc"},
                     {"repo", "https://github.com/chenmozhijin/foo_lddc"},
-                    {"ver", "0.0.1"},
+                    {"ver", "0.0.2"},
                 }}
             };
 
@@ -266,6 +266,12 @@ public:
             }
 
             command_thread = new std::thread(&LDDCDesktopLyrics::process_commands, this);
+
+            inited = true;
+            for (json task : tasks) {
+                send_task(task);
+            }
+            tasks.clear();
         }
 
         bool connect_to_service(int port) {
@@ -294,12 +300,8 @@ public:
             return true;
         }
 
-        bool ensure_connected() {
-            return sock != INVALID_SOCKET;
-        }
-
         void send_message(const std::string& message) {
-            if (!ensure_connected()) {
+            if (sock == INVALID_SOCKET) {
                 return;
             }
 
@@ -308,13 +310,23 @@ public:
             send(sock, message.c_str(), static_cast<int>(message.length()), 0);
         }
 
+        void send_task(json& task) {
+            if (inited) {
+                task["id"] = id;
+                send_message(task.dump());
+            }
+            else {
+                tasks.push_back(task);
+            }
+        }
+
         bool read_message(std::string& response_str) {
             uint32_t length = 0;
 
             // 读取剩余的消息内容
-            if (!msg_buffer.empty()) {
-                response_str = msg_buffer;
-                msg_buffer.clear();
+            if (!received_msg_buffer.empty()) {
+                response_str = received_msg_buffer;
+                received_msg_buffer.clear();
                 return true;
             }
 
@@ -337,8 +349,8 @@ public:
                 std::vector<char> remaining_buffer(remaining_length);
                 result = recv(sock, remaining_buffer.data(), remaining_length, 0);
                 if (result > 0) {
-                    // 将剩余内容保存到 msg_buffer 中
-                    msg_buffer.assign(remaining_buffer.begin(), remaining_buffer.end());
+                    // 将剩余内容保存到 received_msg_buffer 中
+                    received_msg_buffer.assign(remaining_buffer.begin(), remaining_buffer.end());
                 }
             }
 
@@ -404,9 +416,13 @@ public:
         SOCKET sock;
         int id;
         int version;
+        bool inited = false;
         std::string command_line;
-        std::string msg_buffer; // 用于保存剩余消息的缓冲区
+        std::string received_msg_buffer; // 用于保存剩余消息的缓冲区
         std::thread* command_thread; // 用于处理命令的线程
+        std::thread* start_thread; // 用于启动服务的线程
+        std::vector<json> tasks; // 用于保存未发送的task
+
 
         enum {
             REQUIRED_VERSION = 1
@@ -429,7 +445,7 @@ public:
                  {"playback_time", static_cast<int>(static_cast<double>(playback_control::get()->playback_get_position()) * 1000)}
             };
 
-            lddc->send_message(msg.dump());
+            lddc->send_task(msg);
         }
 
         void on_playback_new_track(metadb_handle_ptr p_track) override {
@@ -438,7 +454,6 @@ public:
             file_info_impl info;
             if (p_track->get_info(info)) {
                 json msg = {
-                    {"id", lddc->get_id()},
                     {"task", "chang_music"},
                     {"path", p_track->get_path()},
                     {"duration" , static_cast<int>(info.get_length() * 1000)},
@@ -473,7 +488,7 @@ public:
                     msg["track"] = nullptr;
                 }
 
-                lddc->send_message(msg.dump());
+                lddc->send_task(msg);
             }
         }
 
@@ -481,39 +496,36 @@ public:
             if (!lddc) return;
 
             json msg = {
-                 {"id", lddc->get_id()},
                  {"task", "stop"},
                  {"send_time", get_unix_time()},
                  {"playback_time", static_cast<int>(static_cast<double>(playback_control::get()->playback_get_position()) * 1000)}
             };
 
-            lddc->send_message(msg.dump());
+            lddc->send_task(msg);
         }
 
         void on_playback_seek(double p_time) override {
             if (!lddc) return;
 
             json msg = {
-                 {"id", lddc->get_id()},
                  {"task", "sync"},
                  {"send_time", get_unix_time()},
                  {"playback_time", static_cast<int>(static_cast<double>(playback_control::get()->playback_get_position()) * 1000)}
             };
 
-            lddc->send_message(msg.dump());
+            lddc->send_task(msg);
         }
 
         void on_playback_pause(bool p_state) override {
             if (!lddc) return;
 
             json msg = {
-                 {"id", lddc->get_id()},
                  {"task",p_state ? "pause" : "proceed"},
                  {"send_time", get_unix_time()},
                  {"playback_time", static_cast<int>(static_cast<double>(playback_control::get()->playback_get_position()) * 1000)}
             };
 
-            lddc->send_message(msg.dump());
+            lddc->send_task(msg);
         }
 
         void on_playback_edited(metadb_handle_ptr) override {}
@@ -526,13 +538,12 @@ public:
             if (!lddc) return;
 
             json msg = {
-                 {"id", lddc->get_id()},
                  {"task","sync"},
                  {"send_time", get_unix_time()},
                  {"playback_time", static_cast<int>(static_cast<double>(playback_control::get()->playback_get_position()) * 1000)}
             };
 
-            lddc->send_message(msg.dump());
+            lddc->send_task(msg);
         }
 
         void on_volume_change(float) override {}
