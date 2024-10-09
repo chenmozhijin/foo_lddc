@@ -4,6 +4,11 @@
 
 一个适用于foobar2000的桌面歌词插件, 作为[LDDC](https://github.com/chenmozhijin/LDDC)主程序的客户端(需搭配[LDDC](https://github.com/chenmozhijin/LDDC)使用)
 
+## 预览
+
+![image](img/zh.jpg)
+![gif](img/desktop_lyrics.gif)
+
 ## 安装
 
 1. 从[Releases](https://github.com/chenmozhijin/foo_lddc/releases)下载最新的`foo_lddc_vx.x.x.fb2k-component`

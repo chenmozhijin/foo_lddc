@@ -4,6 +4,11 @@
 
 A desktop lyrics plugin for foobar2000 that acts as a client for the [LDDC](https://github.com/chenmozhijin/LDDC) main program (requires [LDDC](https://github.com/chenmozhijin/LDDC) to be used together).
 
+## Preview
+
+![image](img/en.jpg)
+![gif](img/desktop_lyrics.gif)
+
 ## Installation
 
 1. Download the latest `foo_lddc_vx.x.x.fb2k-component` from the [Releases](https://github.com/chenmozhijin/foo_lddc/releases) page.
